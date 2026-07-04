@@ -3,7 +3,7 @@ import {
   Plus, X, Hammer, Zap, Droplets, Paintbrush, LayoutGrid, Wrench, HardHat,
   AlertTriangle, CheckCircle2, Loader2, Camera, Circle, CircleDot, Image as ImageIcon,
   Home, Building2, Users, DollarSign, Package, CalendarDays, ListChecks, Images,
-  ChevronLeft, ChevronRight, Pencil, Trash2, FolderKanban, Sparkles,
+  ChevronLeft, ChevronRight, Pencil, Trash2, FolderKanban, Sparkles, LogOut,
 } from "lucide-react";
 
 // ---------------- constants ----------------
@@ -173,7 +173,7 @@ function AddButton({ open, onClick, label = "Add" }) {
 // MAIN APP
 // ================================================================
 
-export default function RenovationManager() {
+export default function RenovationManager({ user, onSignOut }) {
   const [projects, setProjects] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -341,8 +341,24 @@ export default function RenovationManager() {
               </select>
             )}
             <span className="font-mono text-[10px] text-[#8891A5] flex items-center gap-1">
-              {saveState === "saving" ? (<><Loader2 className="w-3 h-3 animate-spin text-[#FF6B4A]" /> saving</>) : "saved"}
+              {saveState === "saving" ? (<><Loader2 className="w-3 h-3 animate-spin text-[#FF6B4A]" /> syncing</>) : "synced"}
             </span>
+            {user && (
+              <div className="flex items-center gap-2 pl-3 border-l border-[#2C3242]">
+                {user.picture && (
+                  <img src={user.picture} alt="" referrerPolicy="no-referrer" className="w-6 h-6 rounded-full border border-[#2C3242]" />
+                )}
+                <span className="font-cond text-xs text-[#F8FAFC] hidden sm:inline max-w-[120px] truncate">{user.name || user.email}</span>
+                <button
+                  onClick={onSignOut}
+                  className="text-[#8891A5] hover:text-[#FF8A6C] transition-colors"
+                  title="Sign out"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
         <div className="gold-rule" />
