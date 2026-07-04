@@ -6,6 +6,7 @@ import {
   getProfile, ensureSpreadsheet, signOut,
 } from "./google";
 import { initSheetsStorage } from "./sheetsStorage";
+import { setDriveUser } from "./drive";
 
 // phases: loading | signin | connecting | ready | error
 export default function AuthGate() {
@@ -41,6 +42,7 @@ export default function AuthGate() {
       const r = await requestToken(); // interactive
       if (r.error) throw new Error("Authorization was cancelled or denied.");
       const profile = await getProfile();
+      setDriveUser(profile.email);
       const id = await ensureSpreadsheet(profile.email);
       await initSheetsStorage(id);
       setUser(profile);

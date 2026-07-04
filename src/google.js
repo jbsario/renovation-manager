@@ -95,10 +95,13 @@ export async function sheetsFetch(url, opts = {}, retry = true) {
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Google Sheets API ${res.status}: ${text}`);
+    throw new Error(`Google API ${res.status}: ${text}`);
   }
   return res;
 }
+
+// Generic authenticated fetch (Sheets + Drive share the same token/refresh).
+export const authFetch = sheetsFetch;
 
 const dbIdKey = (email) => `renovation_sheets_db_id:${email}`;
 

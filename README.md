@@ -50,10 +50,14 @@ characters, large values (e.g. base64 photos) are split into ~40k-char chunks
 across rows keyed by `key` + `idx`. See `src/sheetsStorage.js` and
 `src/google.js`.
 
-> Note: photos are stored inline as compressed base64 in the spreadsheet. This
-> keeps everything in one place but is not ideal for very large photo sets — a
-> future improvement would be to store images in Drive/Cloud Storage and keep
-> only references in the sheet.
+### Photos
+
+Photos are **not** stored in the spreadsheet. They are uploaded (downscaled +
+JPEG-compressed) to a private `Renovation Manager Photos` folder in the user's
+Google Drive; only the Drive file id is kept in project data. Because the files
+are private, they're fetched with the access token and rendered via blob object
+URLs (see `src/drive.js` and the `DrivePhoto` component in `src/App.jsx`). Any
+photos saved before this change (inline base64) still render via a fallback.
 
 ## Deployment
 

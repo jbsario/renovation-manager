@@ -5,6 +5,7 @@ import {
   Home, Building2, Users, DollarSign, Package, CalendarDays, ListChecks, Images,
   ChevronLeft, ChevronRight, Pencil, Trash2, FolderKanban, Sparkles, LogOut,
 } from "lucide-react";
+import { uploadPhoto, deletePhoto, getPhotoUrl } from "./drive";
 
 // ---------------- constants ----------------
 
@@ -80,28 +81,6 @@ function money(n) {
   return v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-function fileToCompressedDataUrl(file, maxDim = 900, quality = 0.6) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("read failed"));
-    reader.onload = () => {
-      const img = new window.Image();
-      img.onerror = () => reject(new Error("decode failed"));
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > height && width > maxDim) { height = Math.round((height * maxDim) / width); width = maxDim; }
-        else if (height > maxDim) { width = Math.round((width * maxDim) / height); height = maxDim; }
-        const canvas = document.createElement("canvas");
-        canvas.width = width; canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
 function newProject(name) {
   return {
     id: uid(),
@@ -147,6 +126,32 @@ function Badge({ color, bg, children }) {
 
 function EmptyState({ children }) {
   return <div className="border border-dashed border-[#E6E8EC] p-7 text-center font-cond text-base text-[#94A3B8]">{children}</div>;
+}
+
+// Renders a photo stored in Google Drive (by file id). Falls back to rendering
+// directly if given a legacy base64 data URL from before Drive storage.
+function DrivePhoto({ src, alt, className }) {
+  const isData = typeof src === "string" && src.startsWith("data:");
+  const [url, setUrl] = useState(isData ? src : null);
+  useEffect(() => {
+    let active = true;
+    if (!src || isData) { setUrl(src || null); return; }
+    getPhotoUrl(src).then((u) => { if (active) setUrl(u); }).catch(() => { if (active) setUrl(null); });
+    return () => { active = false; };
+  }, [src, isData]);
+  if (!url) {
+    return (
+      <div className={`${className} bg-[#EEF0F4] flex items-center justify-center`}>
+        <Loader2 className="w-4 h-4 animate-spin text-[#94A3B8]" />
+      </div>
+    );
+  }
+  return <img src={url} alt={alt} className={className} />;
+}
+
+// Accepts either the new {driveId} shape or legacy {dataUrl}.
+function photoSrc(ph) {
+  return ph.driveId || ph.dataUrl || null;
 }
 
 function SectionHeader({ title, action }) {
@@ -592,7 +597,7 @@ function DashboardTab({ project, avgProgress, daysLeft, setTab }) {
         {latestPhotos.length === 0 ? <EmptyState>No photos uploaded yet.</EmptyState> : (
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {latestPhotos.map((ph) => (
-              <img key={ph.id} src={ph.dataUrl} alt={ph.caption || "Progress photo"} className="w-full h-20 object-cover border hairline thumb" />
+              <DrivePhoto key={ph.id} src={photoSrc(ph)} alt={ph.caption || "Progress photo"} className="w-full h-20 object-cover border hairline thumb" />
             ))}
           </div>
         )}
@@ -668,8 +673,8 @@ function DailyTab({ project, update }) {
     if (files.length === 0) return;
     setBusy(true);
     try {
-      const urls = await Promise.all(files.map((f) => fileToCompressedDataUrl(f)));
-      setForm((f) => ({ ...f, photos: [...f.photos, ...urls] }));
+      const ids = await Promise.all(files.map((f) => uploadPhoto(f)));
+      setForm((f) => ({ ...f, photos: [...f.photos, ...ids] }));
     } finally { setBusy(false); }
   }
 
@@ -681,6 +686,8 @@ function DailyTab({ project, update }) {
     setShow(false);
   }
   function remove(id) {
+    const gone = project.dailyUpdates.find((u) => u.id === id);
+    if (gone && gone.photos) gone.photos.forEach((ph) => deletePhoto(ph));
     update((p) => ({ ...p, dailyUpdates: p.dailyUpdates.filter((u) => u.id !== id) }));
   }
 
@@ -729,8 +736,8 @@ function DailyTab({ project, update }) {
             <div className="flex flex-wrap gap-2 mb-2">
               {form.photos.map((ph, i) => (
                 <div key={i} className="relative">
-                  <img src={ph} alt="" className="h-16 w-16 object-cover border hairline thumb" />
-                  <button type="button" onClick={() => setForm((f) => ({ ...f, photos: f.photos.filter((_, idx) => idx !== i) }))}
+                  <DrivePhoto src={ph} alt="" className="h-16 w-16 object-cover border hairline thumb" />
+                  <button type="button" onClick={() => { deletePhoto(ph); setForm((f) => ({ ...f, photos: f.photos.filter((_, idx) => idx !== i) })); }}
                     className="absolute -top-1.5 -right-1.5 bg-[#171A21] text-white rounded-full p-0.5"><X className="w-3 h-3" /></button>
                 </div>
               ))}
@@ -767,7 +774,7 @@ function DailyTab({ project, update }) {
                     {u.remarks && <p className="font-body text-sm text-[#475569]">{u.remarks}</p>}
                     {u.photos && u.photos.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mt-2">
-                        {u.photos.map((ph, i) => <img key={i} src={ph} alt="" className="h-16 w-16 object-cover border hairline thumb" />)}
+                        {u.photos.map((ph, i) => <DrivePhoto key={i} src={ph} alt="" className="h-16 w-16 object-cover border hairline thumb" />)}
                       </div>
                     )}
                   </div>
@@ -1224,8 +1231,8 @@ function PhotosTab({ project, update }) {
     if (files.length === 0) return;
     setBusy(true);
     try {
-      const urls = await Promise.all(files.map((f) => fileToCompressedDataUrl(f)));
-      const newPhotos = urls.map((u) => ({ id: uid(), dataUrl: u, date: todayISO(), area: meta.area, tag: meta.tag, caption: meta.caption }));
+      const ids = await Promise.all(files.map((f) => uploadPhoto(f)));
+      const newPhotos = ids.map((driveId) => ({ id: uid(), driveId, date: todayISO(), area: meta.area, tag: meta.tag, caption: meta.caption }));
       update((p) => ({ ...p, photos: [...newPhotos, ...p.photos] }));
       setMeta((m) => ({ ...m, caption: "" }));
     } finally {
@@ -1233,7 +1240,11 @@ function PhotosTab({ project, update }) {
       if (fileRef.current) fileRef.current.value = "";
     }
   }
-  function remove(id) { update((p) => ({ ...p, photos: p.photos.filter((ph) => ph.id !== id) })); }
+  function remove(id) {
+    const gone = project.photos.find((ph) => ph.id === id);
+    if (gone) deletePhoto(photoSrc(gone));
+    update((p) => ({ ...p, photos: p.photos.filter((ph) => ph.id !== id) }));
+  }
 
   const filtered = project.photos
     .filter((ph) => filterArea === "all" || ph.area === filterArea)
@@ -1269,7 +1280,7 @@ function PhotosTab({ project, update }) {
           {busy ? "Uploading…" : "Upload photos"}
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleUpload} />
         </label>
-        <p className="font-mono text-[10px] text-[#94A3B8]">Note: this stores compressed images only — large video files aren't supported here.</p>
+        <p className="font-mono text-[10px] text-[#94A3B8]">Photos are stored privately in your Google Drive. Large video files aren't supported here.</p>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
@@ -1288,7 +1299,7 @@ function PhotosTab({ project, update }) {
           {filtered.map((ph) => (
             <div key={ph.id} className="relative group">
               <button onClick={() => setLightbox(ph)} className="block w-full">
-                <img src={ph.dataUrl} alt={ph.caption || ph.area} className="w-full h-28 object-cover border hairline thumb" />
+                <DrivePhoto src={photoSrc(ph)} alt={ph.caption || ph.area} className="w-full h-28 object-cover border hairline thumb" />
               </button>
               <div className="absolute top-1 left-1"><Badge color="#FF6B4A" bg="#171A21">{ph.tag}</Badge></div>
               <button onClick={() => remove(ph.id)} className="absolute top-1 right-1 bg-[#171A21] text-white rounded-full p-0.5"><X className="w-3 h-3" /></button>
@@ -1300,7 +1311,7 @@ function PhotosTab({ project, update }) {
       {lightbox && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50" onClick={() => setLightbox(null)}>
           <div className="max-h-full max-w-full">
-            <img src={lightbox.dataUrl} alt={lightbox.caption} className="max-h-[80vh] max-w-full border-2 border-white mx-auto" />
+            <DrivePhoto src={photoSrc(lightbox)} alt={lightbox.caption} className="max-h-[80vh] max-w-full border-2 border-white mx-auto" />
             <p className="text-center text-white font-cond mt-2">{lightbox.area} · {lightbox.tag} · {fmtDate(lightbox.date)}{lightbox.caption ? ` — ${lightbox.caption}` : ""}</p>
           </div>
         </div>
