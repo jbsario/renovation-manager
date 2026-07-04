@@ -8,6 +8,8 @@ import {
 import { initSheetsStorage } from "./sheetsStorage";
 import { setDriveUser } from "./drive";
 
+const SIGNED_IN_KEY = "renovation_signed_in";
+
 // phases: loading | signin | connecting | ready | error
 export default function AuthGate() {
   const [phase, setPhase] = useState("loading");
@@ -22,10 +24,22 @@ export default function AuthGate() {
     }
     let cancelled = false;
     loadGoogle()
-      .then(() => {
+      .then(async () => {
         if (cancelled) return;
         initTokenClient();
-        setPhase("signin");
+        // If the user signed in before, silently re-establish the session on
+        // reload (no popup) instead of bouncing them to the login screen.
+        if (localStorage.getItem(SIGNED_IN_KEY)) {
+          setPhase("connecting");
+          const ok = await establishSession("");
+          if (cancelled) return;
+          if (!ok) {
+            localStorage.removeItem(SIGNED_IN_KEY);
+            setPhase("signin");
+          }
+        } else {
+          setPhase("signin");
+        }
       })
       .catch((e) => {
         if (cancelled) return;
@@ -35,30 +49,47 @@ export default function AuthGate() {
     return () => { cancelled = true; };
   }, []);
 
-  async function handleSignIn() {
-    setError("");
-    setPhase("connecting");
+  // prompt: "" = silent (reload restore); "consent" = interactive sign-in.
+  async function establishSession(prompt) {
     try {
-      const r = await requestToken("consent"); // always show consent so all boxes can be ticked
-      if (r.error) throw new Error("Authorization was cancelled or denied.");
+      const r = await requestToken(prompt);
+      if (r.error || !r.token) {
+        if (prompt !== "") throw new Error("Authorization was cancelled or denied.");
+        return false; // silent attempt failed -> caller shows login
+      }
       if (!hasDataScopes(r.response)) {
-        throw new Error(
-          "Please tick BOTH permission boxes (Google Sheets and Drive) on the consent screen, then try again."
-        );
+        if (prompt !== "") {
+          throw new Error(
+            "Please tick BOTH permission boxes (Google Sheets and Drive) on the consent screen, then try again."
+          );
+        }
+        return false;
       }
       const profile = await getProfile();
       setDriveUser(profile.email);
       const id = await ensureSpreadsheet(profile.email);
       await initSheetsStorage(id);
+      localStorage.setItem(SIGNED_IN_KEY, profile.email);
       setUser(profile);
       setPhase("ready");
+      return true;
     } catch (e) {
-      setError(e.message || "Sign-in failed. Please try again.");
-      setPhase("signin");
+      if (prompt !== "") {
+        setError(e.message || "Sign-in failed. Please try again.");
+        setPhase("signin");
+      }
+      return false;
     }
   }
 
+  async function handleSignIn() {
+    setError("");
+    setPhase("connecting");
+    await establishSession("consent");
+  }
+
   function handleSignOut() {
+    localStorage.removeItem(SIGNED_IN_KEY);
     signOut();
     window.location.reload();
   }

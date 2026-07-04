@@ -59,8 +59,33 @@ are private, they're fetched with the access token and rendered via blob object
 URLs (see `src/drive.js` and the `DrivePhoto` component in `src/App.jsx`). Any
 photos saved before this change (inline base64) still render via a fallback.
 
-## Deployment
+## Deployment (Vercel)
 
-Any static host works (the app is fully client-side). On Vercel/Netlify, set the
-`VITE_GOOGLE_CLIENT_ID` environment variable and add the deployed URL to the
-OAuth client's **Authorized JavaScript origins**.
+Whichever option you pick, you must do these two things once:
+
+1. In the Vercel project → **Settings → Environment Variables**, add
+   `VITE_GOOGLE_CLIENT_ID` (Production + Preview). Vite bakes it in at build
+   time, so redeploy after changing it.
+2. In Google Cloud Console → OAuth client → **Authorized JavaScript origins**,
+   add your Vercel URL (e.g. `https://renovation-manager-app.vercel.app`).
+
+### Option A — Vercel Git integration (simplest, recommended)
+
+In the Vercel dashboard, connect the project to the GitHub repo
+(**Settings → Git**). After that, every push to `main` deploys automatically.
+No secrets or workflow needed — if you use this, ignore Option B.
+
+### Option B — GitHub Actions (`.github/workflows/deploy.yml`)
+
+Included in this repo. It deploys on every push to `main` using the Vercel CLI.
+Add these **repository secrets** (GitHub → Settings → Secrets and variables →
+Actions):
+
+| Secret | Where to get it |
+| --- | --- |
+| `VERCEL_TOKEN` | https://vercel.com/account/tokens |
+| `VERCEL_ORG_ID` | run `vercel link` locally → `.vercel/project.json`, or Vercel project settings |
+| `VERCEL_PROJECT_ID` | same as above |
+
+> Use **either** Option A **or** Option B — enabling both causes duplicate
+> deploys. If you rely on Git integration, delete `.github/workflows/deploy.yml`.
