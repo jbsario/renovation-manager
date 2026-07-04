@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Loader2, HardHat, ShieldAlert } from "lucide-react";
 import App from "./App.jsx";
 import {
-  isConfigured, loadGoogle, initTokenClient, requestToken,
+  isConfigured, loadGoogle, initTokenClient, requestToken, hasDataScopes,
   getProfile, ensureSpreadsheet, signOut,
 } from "./google";
 import { initSheetsStorage } from "./sheetsStorage";
@@ -39,8 +39,13 @@ export default function AuthGate() {
     setError("");
     setPhase("connecting");
     try {
-      const r = await requestToken(); // interactive
+      const r = await requestToken("consent"); // always show consent so all boxes can be ticked
       if (r.error) throw new Error("Authorization was cancelled or denied.");
+      if (!hasDataScopes(r.response)) {
+        throw new Error(
+          "Please tick BOTH permission boxes (Google Sheets and Drive) on the consent screen, then try again."
+        );
+      }
       const profile = await getProfile();
       setDriveUser(profile.email);
       const id = await ensureSpreadsheet(profile.email);

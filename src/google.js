@@ -20,6 +20,11 @@ const SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
 ].join(" ");
 
+const DATA_SCOPES = [
+  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/spreadsheets",
+];
+
 let tokenClient = null;
 let accessToken = null;
 let pendingResolve = null;
@@ -57,9 +62,16 @@ export function initTokenClient() {
         return;
       }
       accessToken = resp.access_token;
-      done && done({ token: resp.access_token });
+      done && done({ token: resp.access_token, response: resp });
     },
   });
+}
+
+// True only if the user granted BOTH data scopes (Sheets + Drive). Google shows
+// these as separate checkboxes on the consent screen and they're easy to miss.
+export function hasDataScopes(response) {
+  if (!response) return false;
+  return window.google.accounts.oauth2.hasGrantedAllScopes(response, ...DATA_SCOPES);
 }
 
 // prompt: pass "" for a silent refresh, or omit for the interactive sign-in.
